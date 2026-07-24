@@ -443,6 +443,14 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+.reader-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
 .reader-canvas-wrap {
   flex: 1;
   overflow: auto;
@@ -452,6 +460,70 @@ html, body, #root {
   background: var(--bg-deep);
   position: relative;
   -webkit-overflow-scrolling: touch;
+}
+
+/* ── Translation panel ── */
+.translation-panel {
+  width: 340px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-left: 1px solid var(--brd);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.translation-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.translation-panel-header h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ff-display);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.translation-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.translation-error {
+  font-size: 13px;
+  color: var(--accent);
+  line-height: 1.5;
+}
+
+.translation-text {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.translation-disclaimer {
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  padding-top: 10px;
+  border-top: 1px solid var(--brd);
 }
 
 .reader-canvas-wrap canvas {
@@ -740,6 +812,17 @@ html, body, #root {
 
   .reader-canvas-wrap {
     padding: 8px;
+  }
+
+  .reader-body {
+    position: relative;
+  }
+
+  .translation-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    z-index: 60;
   }
 
   /* Notes sidebar → bottom drawer on mobile */

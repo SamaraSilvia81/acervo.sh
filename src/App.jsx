@@ -3,7 +3,7 @@ import {
   BookOpen, Upload, ArrowLeft, CaretLeft, CaretRight, Check,
   DownloadSimple, Eye, Trash, Books, Target, Lightning, X,
   Plus, FilePdf, PencilSimple, Highlighter, Eraser,
-  TextT, Palette, FloppyDisk, Note,
+  TextT, Palette, FloppyDisk, Note, Translate,
 } from '@phosphor-icons/react';
 import {
   loadData, saveData, uid,
@@ -15,6 +15,7 @@ import {
   loadPdf, extractOutline, extractTextFromPages,
   renderPage, extractChapterPdf,
 } from './pdfEngine';
+import { translateToPortuguese } from './translate';
 
 // ── VIEWS ──
 const VIEW = { HOME: 'home', CHAPTERS: 'chapters', READER: 'reader' };
@@ -470,6 +471,46 @@ function ReaderView({ state, onClose, onPageChange }) {
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
   const [saved, setSaved] = useState(false);
 
+  // Translation panel
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translationCache, setTranslationCache] = useState({}); // page -> texto traduzido
+  const [translationProgress, setTranslationProgress] = useState(null); // { done, total }
+  const [translationError, setTranslationError] = useState(null);
+
+  // Traduz a página atual sob demanda (quando o painel está aberto e ainda não há cache dela)
+  useEffect(() => {
+    if (!showTranslation) return;
+    if (translationCache[currentPage]) return;
+
+    let cancelled = false;
+    (async () => {
+      setTranslating(true);
+      setTranslationError(null);
+      try {
+        const pageText = await extractTextFromPages(pdfDoc, currentPage, currentPage);
+        if (!pageText || !pageText.trim()) {
+          if (!cancelled) setTranslationError('Não foi possível extrair texto desta página (pode ser uma página escaneada/imagem).');
+          return;
+        }
+        const translated = await translateToPortuguese(pageText, (done, total) => {
+          if (!cancelled) setTranslationProgress({ done, total });
+        });
+        if (!cancelled) setTranslationCache(prev => ({ ...prev, [currentPage]: translated }));
+      } catch (err) {
+        console.error('Erro ao traduzir página:', err);
+        if (!cancelled) setTranslationError('Erro ao traduzir esta página. Tente novamente.');
+      } finally {
+        if (!cancelled) {
+          setTranslating(false);
+          setTranslationProgress(null);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [currentPage, showTranslation, pdfDoc]);
+
   // Load page annotations
   useEffect(() => {
     const anno = getPageAnnotations(bookId, currentPage);
@@ -698,6 +739,13 @@ function ReaderView({ state, onClose, onPageChange }) {
             style={saved ? { borderColor: 'var(--green)', color: 'var(--green)' } : {}}>
             {saved ? <Check size={16} /> : <FloppyDisk size={16} />}
           </button>
+          <button
+            className={showTranslation ? 'icon-btn tool-active' : 'icon-btn'}
+            title="Traduzir página (PT-BR)"
+            onClick={() => setShowTranslation(s => !s)}
+          >
+            <Translate size={16} />
+          </button>
         </div>
 
         <div className="reader-page-nav">
@@ -711,48 +759,81 @@ function ReaderView({ state, onClose, onPageChange }) {
         </div>
       </div>
 
-      <div className="reader-canvas-wrap" ref={wrapRef}>
-        <div style={{ position: 'relative', display: 'inline-block' }}>
-          <canvas ref={pdfCanvasRef} style={{ opacity: rendering ? 0.5 : 1, display: 'block' }} />
-          <canvas
-            ref={annoCanvasRef}
-            style={{
-              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-              cursor: tool === TOOLS.PEN ? 'crosshair'
-                : tool === TOOLS.HIGHLIGHT ? 'text'
-                : tool === TOOLS.NOTE ? 'cell'
-                : tool === TOOLS.ERASER ? 'not-allowed'
-                : 'default',
-              touchAction: 'none',
-            }}
-            onMouseDown={handlePointerDown}
-            onMouseMove={handlePointerMove}
-            onMouseUp={handlePointerUp}
-            onMouseLeave={handlePointerUp}
-            onTouchStart={handlePointerDown}
-            onTouchMove={handlePointerMove}
-            onTouchEnd={handlePointerUp}
-          />
+      <div className="reader-body">
+        <div className="reader-canvas-wrap" ref={wrapRef}>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <canvas ref={pdfCanvasRef} style={{ opacity: rendering ? 0.5 : 1, display: 'block' }} />
+            <canvas
+              ref={annoCanvasRef}
+              style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                cursor: tool === TOOLS.PEN ? 'crosshair'
+                  : tool === TOOLS.HIGHLIGHT ? 'text'
+                  : tool === TOOLS.NOTE ? 'cell'
+                  : tool === TOOLS.ERASER ? 'not-allowed'
+                  : 'default',
+                touchAction: 'none',
+              }}
+              onMouseDown={handlePointerDown}
+              onMouseMove={handlePointerMove}
+              onMouseUp={handlePointerUp}
+              onMouseLeave={handlePointerUp}
+              onTouchStart={handlePointerDown}
+              onTouchMove={handlePointerMove}
+              onTouchEnd={handlePointerUp}
+            />
+          </div>
+
+          {/* Note input popup */}
+          {noteInput && (
+            <div className="note-popup"
+              style={{
+                position: 'absolute',
+                left: Math.min(noteInput.x / (canvasSize.w || 1) * 100, 70) + '%',
+                top: noteInput.y / (canvasSize.h || 1) * 100 + '%',
+              }}>
+              <textarea
+                autoFocus
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Escreva sua nota..."
+                rows={3}
+              />
+              <div className="note-popup-actions">
+                <button onClick={addNote} className="note-save-btn">Salvar</button>
+                <button onClick={() => setNoteInput(null)} className="note-cancel-btn">Cancelar</button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Note input popup */}
-        {noteInput && (
-          <div className="note-popup"
-            style={{
-              position: 'absolute',
-              left: Math.min(noteInput.x / (canvasSize.w || 1) * 100, 70) + '%',
-              top: noteInput.y / (canvasSize.h || 1) * 100 + '%',
-            }}>
-            <textarea
-              autoFocus
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="Escreva sua nota..."
-              rows={3}
-            />
-            <div className="note-popup-actions">
-              <button onClick={addNote} className="note-save-btn">Salvar</button>
-              <button onClick={() => setNoteInput(null)} className="note-cancel-btn">Cancelar</button>
+        {/* Translation panel */}
+        {showTranslation && (
+          <div className="translation-panel">
+            <div className="translation-panel-header">
+              <h4><Translate size={14} /> Tradução (PT-BR)</h4>
+              <button className="icon-btn" title="Fechar tradução" onClick={() => setShowTranslation(false)}>
+                <X size={14} />
+              </button>
+            </div>
+
+            {translating && (
+              <div className="translation-loading">
+                <Lightning size={14} />
+                Traduzindo{translationProgress ? ` (${translationProgress.done}/${translationProgress.total})` : '...'}
+              </div>
+            )}
+
+            {!translating && translationError && (
+              <div className="translation-error">{translationError}</div>
+            )}
+
+            {!translating && !translationError && translationCache[currentPage] && (
+              <p className="translation-text">{translationCache[currentPage]}</p>
+            )}
+
+            <div className="translation-disclaimer">
+              Tradução automática (MyMemory) — pode conter imprecisões, útil como apoio à leitura.
             </div>
           </div>
         )}
